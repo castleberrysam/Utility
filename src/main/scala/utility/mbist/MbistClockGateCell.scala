@@ -16,7 +16,7 @@
 package utility.mbist
 
 import chisel3._
-import utility.ClockGate
+import utility.{ClockGate, ClockMux}
 import utility.sram.SramBroadcastBundle
 
 class CgDftBundle extends Bundle {
@@ -25,14 +25,14 @@ class CgDftBundle extends Bundle {
   val ram_aux_ckbp = Input(Bool())
   val cgen = Input(Bool())
   def fromBroadcast(brc: SramBroadcastBundle): Unit = {
-    ram_aux_clk := brc.ram_aux_clk
-    ram_aux_ckbp := brc.ram_aux_ckbp
-    ram_mcp_hold := brc.ram_mcp_hold
-    cgen := brc.cgen
+    ram_aux_clk := brc.mbist.ram_aux_clk
+    ram_aux_ckbp := brc.mbist.ram_aux_ckbp
+    ram_mcp_hold := brc.mbist.ram_mcp_hold
+    cgen := brc.mbist.cgen
   }
 }
 
-class MbistClockGateCell(mcpCtl:Boolean) extends Module {
+class MbistClockGateCell(mcpCtl: Boolean) extends Module {
   val mbist = IO(new Bundle {
     val writeen = Input(Bool())
     val readen = Input(Bool())
@@ -46,9 +46,13 @@ class MbistClockGateCell(mcpCtl:Boolean) extends Module {
   CG.io.TE := dft.cgen
   CG.io.CK := clock
 
-  if(mcpCtl) {
+  if (mcpCtl) {
     CG.io.E := Mux(mbist.req, mbist.readen | mbist.writeen, E) && !dft.ram_mcp_hold
-    out_clock := Mux(dft.ram_aux_ckbp, dft.ram_aux_clk.asClock, CG.io.Q)
+    val clockMux = Module(new ClockMux)
+    clockMux.clk0 := CG.io.Q
+    clockMux.clk1 := dft.ram_aux_clk.asClock
+    clockMux.sel := dft.ram_aux_ckbp
+    out_clock := clockMux.clkout
   } else {
     CG.io.E := Mux(mbist.req, mbist.readen | mbist.writeen, E)
     out_clock := CG.io.Q
